@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'services/auth_service.dart'; // เพิ่มการนำเข้า AuthService 5/12/2026
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -10,12 +11,84 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   String selectedRole = 'student';
+  // เพิ่มตัวแปรสำหรับ AuthService และ TextEditingController 5/12/2026
+  final AuthService _authService = AuthService();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  bool _isLoading = false;
+  bool _isLoginMode = true; // เพิ่ม toggle โหมด Login/Register
 
   Future<void> _handleLogin() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('isLoggedIn', true);
-    await prefs.setString('userRole', selectedRole);
-    if (mounted) context.go('/dashboard');
+    // เพิ่มเติมเทียบกับ superbase จริง 5/12/2026
+    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("กรุณากรอกข้อมูลให้ครบ")));
+      return;
+    }
+    setState(() => _isLoading = true);
+
+    try {
+      // ยิงไปหา Supabase
+      await _authService.signIn(
+        _emailController.text.trim(),
+        _passwordController.text.trim(),
+      );
+      // โค้ดเดิม
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isLoggedIn', true);
+      await prefs.setString('userRole', selectedRole);
+
+      if (mounted) context.go('/dashboard');
+    } catch (e) {
+      // ถ้าไม่ผ่าน
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("เข้าสู่ระบบไม่สำเร็จ: ${e.toString()}"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // เพิ่มสำหรับ Register 5/12/2026
+  Future<void> _handleRegister() async {
+    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("กรุณากรอกข้อมูลให้ครบ")));
+      return;
+    }
+    setState(() => _isLoading = true);
+
+    try {
+      await _authService.signUp(
+        _emailController.text.trim(),
+        _passwordController.text.trim(),
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("สมัครสมาชิกสำเร็จ!")));
+        setState(() => _isLoginMode = true); // กลับไปหน้า Login อัตโนมัติ
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("สมัครไม่สำเร็จ: ${e.toString()}"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -46,7 +119,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   style: TextStyle(color: Colors.grey),
                 ),
                 const SizedBox(height: 24),
-                // Login / Register Toggle
+                // Login / Register Toggle 5/12/2026
                 Container(
                   decoration: BoxDecoration(
                     color: Colors.grey.shade100,
@@ -55,30 +128,79 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: Row(
                     children: [
                       Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(8),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.05),
-                                blurRadius: 4,
+                        child: GestureDetector(
+                          onTap: () => setState(
+                            () => _isLoginMode = true,
+                          ), 
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: _isLoginMode
+                                  ? Colors.white
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(8),
+                              boxShadow: _isLoginMode
+                                  ? [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.05),
+                                        blurRadius: 4,
+                                      ),
+                                    ]
+                                  : [],
+                            ),
+                            child: Text(
+                              "Login",
+                              style: TextStyle(
+                                fontWeight: _isLoginMode
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
                               ),
-                            ],
+                            ),
                           ),
-                          child: const Text("Login"),
                         ),
                       ),
-                      const Expanded(child: Center(child: Text("Register"))),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => setState(
+                            () => _isLoginMode = false,
+                          ), 
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: !_isLoginMode
+                                  ? Colors.white
+                                  : Colors.transparent, 
+                              borderRadius: BorderRadius.circular(8),
+                              boxShadow: !_isLoginMode
+                                  ? [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.05),
+                                        blurRadius: 4,
+                                      ),
+                                    ]
+                                  : [],
+                            ),
+                            child: Text(
+                              "Register",
+                              style: TextStyle(
+                                fontWeight: !_isLoginMode
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
-                ),
+              ),// สิ้นสุด Toggle 
                 const SizedBox(height: 24),
                 const Text("Email"),
                 const SizedBox(height: 8),
                 TextField(
+                  controller: _emailController, // เพิ่ม Controller 5/12/2026
                   decoration: InputDecoration(
                     hintText: "you@example.com",
                     filled: true,
@@ -97,6 +219,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const Text("Password"),
                 const SizedBox(height: 8),
                 TextField(
+                  controller: _passwordController, // เพิ่ม Controller 5/12/2026
                   obscureText: true,
                   decoration: InputDecoration(
                     hintText: "Password",
@@ -127,7 +250,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   width: double.infinity,
                   height: 48,
                   child: ElevatedButton(
-                    onPressed: _handleLogin,
+                    onPressed: _isLoginMode ? _handleLogin : _handleRegister,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.black,
                       shape: RoundedRectangleBorder(
@@ -140,7 +263,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                 ),
-
               ],
             ),
           ),
